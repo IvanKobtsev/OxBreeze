@@ -1,0 +1,14 @@
+<idea-plugin>
+    <id>dev.oxbreeze</id>
+    <name>OxBreeze</name>
+    <vendor>OxBreeze</vendor>
+    <description>Minimal Oxfmt and Vite+ formatting on save. No language server or linting.</description>
+    <depends>com.intellij.modules.platform</depends>
+    <extensions defaultExtensionNs="com.intellij">
+        <projectConfigurable parentId="tools" id="dev.oxbreeze.settings" displayName="OxBreeze" instance="dev.oxbreeze.SettingsPage"/>
+        <notificationGroup id="OxBreeze" displayType="BALLOON"/>
+    </extensions>
+    <applicationListeners>
+        <listener class="dev.oxbreeze.SaveListener" topic="com.intellij.openapi.fileEditor.FileDocumentManagerListener"/>
+    </applicationListeners>
+</idea-plugin>
