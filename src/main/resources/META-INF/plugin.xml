@@ -2,7 +2,7 @@
     <id>dev.oxbreeze</id>
     <name>OxBreeze</name>
     <vendor>OxBreeze</vendor>
-    <description>Minimal Oxfmt and Vite+ formatting on save. No language server or linting.</description>
+    <description>Oxfmt and Vite+ formatting on save using persistent formatting-only servers. No linting or IDE analysis integration.</description>
     <depends>com.intellij.modules.platform</depends>
     <extensions defaultExtensionNs="com.intellij">
         <projectConfigurable parentId="tools" id="dev.oxbreeze.settings" displayName="OxBreeze" instance="dev.oxbreeze.SettingsPage"/>

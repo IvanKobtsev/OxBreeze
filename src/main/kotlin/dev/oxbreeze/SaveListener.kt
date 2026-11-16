@@ -1,7 +1,5 @@
 package dev.oxbreeze
 
-import com.intellij.execution.configurations.GeneralCommandLine
-import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.notification.NotificationAction
@@ -17,11 +15,10 @@ import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.roots.ProjectFileIndex
-import com.intellij.util.concurrency.AppExecutorUtil
-import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Future
+import java.util.concurrent.FutureTask
 import java.util.concurrent.atomic.AtomicLong
 
 class SaveListener : FileDocumentManagerListener {
@@ -39,58 +36,57 @@ class SaveListener : FileDocumentManagerListener {
 
 @Service(Service.Level.PROJECT)
 class SaveService(private val project: Project) : com.intellij.openapi.Disposable {
-    private data class Job(val sequence: Long, val future: Future<*>)
+    private data class Job(val sequence: Long, val source: String, val future: Future<*>)
     private val jobs = ConcurrentHashMap<Document, Job>()
     private val sequence = AtomicLong()
+    private val sessions = ConcurrentHashMap<Formatter, FormatterSession>()
+    private val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "OxBreeze formatting").apply { isDaemon = true } }
     private val reported = ConcurrentHashMap.newKeySet<String>()
     private val applying = HashSet<Document>() // UI thread only
     private val log = Logger.getInstance(SaveService::class.java)
+    @Volatile private var disposed = false
 
     fun schedule(document: Document, file: Path) {
-        if (document in applying) return
+        if (disposed || document in applying) return
         val source = document.text
-        val stamp = document.modificationStamp
+        val previous = jobs[document]
+        if (previous?.source == source && !previous.future.isDone) return
         val id = sequence.incrementAndGet()
-        jobs.remove(document)?.future?.cancel(true)
-        val future = AppExecutorUtil.getAppScheduledExecutorService().schedule({
+        jobs.remove(document)?.future?.cancel(false)
+        val future = FutureTask<Unit>({
             try {
+                if (disposed || jobs[document]?.sequence != id) return@FutureTask
                 val settings = project.service<Settings>().state
-                val root = project.basePath?.let(Path::of) ?: return@schedule
+                val root = project.basePath?.let(Path::of) ?: return@FutureTask
                 val formatter = Discovery.resolve(file, root, settings.executable)
                     ?: error("No local formatter found. Install oxfmt or vite-plus, or set an executable override.")
-                val windowsShim = formatter.executable.toString().endsWith(".cmd", true) || formatter.executable.toString().endsWith(".bat", true)
-                val command = (if (windowsShim) GeneralCommandLine("cmd.exe").withParameters("/d", "/c", formatter.executable.toString())
-                    else GeneralCommandLine(formatter.executable.toString()))
-                    .withParameters(formatter.arguments(file))
-                    .withWorkDirectory(formatter.directory.toFile())
-                    .withCharset(StandardCharsets.UTF_8)
-                val handler = CapturingProcessHandler(command)
-                try {
-                    // Drain output before writing stdin, avoiding pipe deadlocks on large files.
-                    handler.startNotify()
-                    val input = AppExecutorUtil.getAppExecutorService().submit {
-                        handler.process.outputStream.use { it.write(source.toByteArray(StandardCharsets.UTF_8)) }
+                val session = sessions.compute(formatter) { key, existing ->
+                    if (existing?.isRunning == true) existing else {
+                        existing?.close()
+                        FormatterSession(key)
                     }
-                    val output = handler.runProcess(10_000)
-                    input.cancel(true)
-                    if (Thread.currentThread().isInterrupted) return@schedule
-                    check(!output.isTimeout) { "Formatter timed out after 10 seconds." }
-                    check(output.exitCode == 0) { output.stderr.take(1500).ifBlank { "Formatter exited with code ${output.exitCode}." } }
-                    if (output.stdout == source) return@schedule
-                    ApplicationManager.getApplication().invokeLater {
-                        if (project.isDisposed || jobs[document]?.sequence != id || document.modificationStamp != stamp || !project.service<Settings>().state.enabled) return@invokeLater
-                        applying.add(document)
-                        try {
-                            WriteCommandAction.runWriteCommandAction(project, "Format with OxBreeze", null, Runnable { document.setText(output.stdout) })
-                            FileDocumentManager.getInstance().saveDocument(document)
-                        } finally { applying.remove(document) }
-                    }
-                } finally { if (!handler.isProcessTerminated) handler.destroyProcess() }
+                }!!
+                if (disposed) { session.close(); return@FutureTask }
+                val output = try { session.format(file, source) } catch (e: Exception) {
+                    sessions.remove(formatter, session)
+                    session.close()
+                    throw e
+                }
+                if (Thread.currentThread().isInterrupted || output == source) return@FutureTask
+                ApplicationManager.getApplication().invokeLater {
+                    if (project.isDisposed || jobs[document]?.sequence != id || document.text != source || !project.service<Settings>().state.enabled) return@invokeLater
+                    applying.add(document)
+                    try {
+                        WriteCommandAction.runWriteCommandAction(project, "Format with OxBreeze", null, Runnable { document.setText(output) })
+                        FileDocumentManager.getInstance().saveDocument(document)
+                    } finally { applying.remove(document) }
+                }
             } catch (e: Exception) {
                 if (!Thread.currentThread().isInterrupted && !project.isDisposed) report(e)
             }
-        }, 100, java.util.concurrent.TimeUnit.MILLISECONDS)
-        jobs[document] = Job(id, future)
+        }, Unit)
+        jobs[document] = Job(id, source, future)
+        worker.execute(future)
     }
 
     private fun report(error: Exception) {
@@ -104,5 +100,14 @@ class SaveService(private val project: Project) : com.intellij.openapi.Disposabl
                 .notify(project)
         }
     }
-    override fun dispose() { jobs.values.forEach { it.future.cancel(true) }; jobs.clear() }
+    override fun dispose() {
+        disposed = true
+        worker.shutdownNow()
+        jobs.values.forEach { it.future.cancel(false) }
+        jobs.clear()
+        val active = sessions.values.toList()
+        sessions.clear()
+        Thread({ active.forEach { it.close() } }, "OxBreeze shutdown").apply { isDaemon = true; start() }
+    }
 }
+

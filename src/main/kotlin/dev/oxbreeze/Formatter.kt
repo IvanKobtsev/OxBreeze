@@ -5,6 +5,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 data class Formatter(val executable: Path, val directory: Path, val vite: Boolean) {
+    fun serverArguments() = (if (vite) listOf("fmt") else emptyList()) + "--lsp"
     fun arguments(file: Path) = (if (vite) listOf("fmt") else emptyList()) + listOf("--stdin-filepath", file.toString())
 }
 

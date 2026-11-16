@@ -23,10 +23,12 @@ class DiscoveryTest {
             val file = frontend.resolve("src/main.ts")
             val result = Discovery.resolve(file, root, "")!!
             assertTrue(result.vite)
+            assertEquals(listOf("fmt", "--lsp"), result.serverArguments())
             assertEquals(frontend, result.directory)
             assertEquals(listOf("fmt", "--stdin-filepath", file.toString()), result.arguments(file))
             val override = Discovery.resolve(file, root, "tools/oxfmt.exe")!!
             assertFalse(override.vite)
+            assertEquals(listOf("--lsp"), override.serverArguments())
             assertEquals(root.resolve("tools/oxfmt.exe"), override.executable)
         } finally { root.toFile().deleteRecursively() }
     }

@@ -1,6 +1,6 @@
 # OxBreeze
 
-A minimal WebStorm 2026.3 plugin that formats local project files on save using Oxfmt. No language server, linting, or analysis.
+A minimal WebStorm 2026.3 plugin that formats local project files on save using a persistent Oxfmt formatting server. No linting or IDE analysis integration.
 
 ## Usage
 
@@ -10,7 +10,7 @@ Under **Settings → Tools → OxBreeze**, enable or disable formatting, select 
 
 OxBreeze searches ancestor `node_modules/.bin` directories. Projects declaring `vite-plus` use `vp fmt`; other projects use `oxfmt`. Relative executable overrides resolve against the IDE project root. Overrides named `vp`, `vp.cmd`, or `vp.exe` use Vite+ mode.
 
-Formatting runs asynchronously with a 10-second timeout. Results apply only if the document has not changed. Formatter errors leave the original file intact and show a notification. Disable competing format-on-save integrations for predictable results.
+Formatting uses one persistent `oxfmt --lsp` or `vp fmt --lsp` process per resolved executable and package directory. Startup and requests run on a background worker. A separate 10-second watchdog kills stalled processes, including their children; the next save restarts failed servers. Project disposal stops all servers. Results apply only if the document has not changed. Formatter errors leave the original file intact and show a notification. Disable competing format-on-save integrations for predictable results.
 
 ## Development
 
