@@ -7,6 +7,22 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DiscoveryTest {
+    @Test fun openedFrontendFindsHoistedWorkspaceVp() {
+        val root = Files.createTempDirectory("oxbreeze workspace ")
+        try {
+            Files.writeString(root.resolve("package.json"), """{"workspaces":["frontend"]}""")
+            val frontend = Files.createDirectories(root.resolve("frontend"))
+            Files.writeString(frontend.resolve("package.json"), """{"devDependencies":{"vite-plus":"1.1.0"}}""")
+            val suffix = if (System.getProperty("os.name").startsWith("Windows")) ".cmd" else ""
+            val bin = root.resolve("node_modules/.bin/vp$suffix")
+            Files.createDirectories(bin.parent)
+            Files.writeString(bin, "")
+            val result = Discovery.resolve(frontend.resolve("src/main.ts"), frontend, "")!!
+            assertEquals(bin, result.executable)
+            assertEquals(root, result.directory)
+            assertTrue(result.vite)
+        } finally { root.toFile().deleteRecursively() }
+    }
     @Test fun defaultsExcludeOnlyHbs() {
         assertFalse("hbs" in Formats.defaults())
         assertEquals(Formats.extensions.toSet() - "hbs", Formats.defaults().toSet())

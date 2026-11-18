@@ -11,8 +11,14 @@ data class Formatter(val executable: Path, val directory: Path, val vite: Boolea
 
 object Discovery {
     fun resolve(file: Path, root: Path, override: String): Formatter? {
-        val ancestors = generateSequence(file.parent) { if (it == root) null else it.parent }
-            .takeWhile { it.startsWith(root) }.toList()
+        // IDE projects may open a single package of a workspace with hoisted binaries.
+        val boundary = generateSequence(root) { it.parent }.firstOrNull { dir ->
+            Files.exists(dir.resolve(".git")) || runCatching {
+                JsonParser.parseString(Files.readString(dir.resolve("package.json"))).asJsonObject.has("workspaces")
+            }.getOrDefault(false)
+        } ?: root
+        val ancestors = generateSequence(file.parent) { if (it == boundary) null else it.parent }
+            .takeWhile { it.startsWith(boundary) }.toList()
         val packages = ancestors.filter { Files.isRegularFile(it.resolve("package.json")) }
         val directory = packages.firstOrNull() ?: root
         if (override.isNotBlank()) {
