@@ -27,7 +27,14 @@ class SaveListener : FileDocumentManagerListener {
         if (!file.isInLocalFileSystem || !file.isWritable) return
         val project = ProjectManager.getInstance().openProjects.firstOrNull {
             !it.isDisposed && ProjectFileIndex.getInstance(it).isInContent(file)
-        } ?: return
+        } ?: ProjectManager.getInstance().openProjects.filter { candidate ->
+            if (candidate.isDisposed) false else candidate.basePath?.let { base ->
+                val root = Path.of(base)
+                val path = Path.of(file.path)
+                path.startsWith(root) && !ProjectFileIndex.getInstance(candidate).isExcluded(file) &&
+                    root.relativize(path).none { part -> part.toString() in setOf(".idea", ".git", "node_modules") }
+            } == true
+        }.maxByOrNull { it.basePath?.length ?: 0 } ?: return
         val settings = project.service<Settings>().state
         if (!settings.enabled || file.extension?.lowercase() !in settings.extensions) return
         project.service<SaveService>().schedule(document, Path.of(file.path))

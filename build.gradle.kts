@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "dev.oxbreeze"
-version = "0.2.1"
+version = "0.2.2"
 repositories {
     mavenCentral()
     intellijPlatform { defaultRepositories() }
