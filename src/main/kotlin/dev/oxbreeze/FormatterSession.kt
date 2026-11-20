@@ -69,7 +69,7 @@ class FormatterSession(private val formatter: Formatter, private val timeoutMill
                     add("textDocument", JsonObject().apply { addProperty("uri", uri) })
                     add("options", json("""{"tabSize":2,"insertSpaces":true}"""))
                 })
-                return applyEdits(source, edits)
+                return documentText(applyEdits(source, edits))
             } finally { if (!closed) notify("textDocument/didClose", JsonObject().apply { add("textDocument", JsonObject().apply { addProperty("uri", uri) }) }) }
         } finally { watchdog.cancel(false) }
     }
@@ -103,6 +103,7 @@ class FormatterSession(private val formatter: Formatter, private val timeoutMill
     }
 
     companion object {
+        internal fun documentText(text: String) = text.replace("\r\n", "\n").replace('\r', '\n')
         private val timer = Executors.newSingleThreadScheduledExecutor { Thread(it, "OxBreeze watchdog").apply { isDaemon = true } }
         private fun json(text: String) = JsonParser.parseString(text).asJsonObject
         private fun language(file: Path) = when (file.toString().substringAfterLast('.')) {

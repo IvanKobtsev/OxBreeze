@@ -6,6 +6,11 @@ import java.nio.file.Path
 import kotlin.test.*
 
 class FormatterSessionTest {
+    @Test fun formatterLineEndingsAreNormalizedForIdeDocuments() {
+        assertEquals("a\nb\nc\n", FormatterSession.documentText("a\r\nb\rc\n"))
+        val edits = JsonParser.parseString("""[{"range":{"start":{"line":0,"character":0},"end":{"line":1,"character":1}},"newText":"a\r\nb\r\n"}]""")
+        assertEquals("a\nb\n", FormatterSession.documentText(FormatterSession.applyEdits("a\nb", edits)))
+    }
     @Test fun stalledServerIsKilledByWatchdog() {
         if (!System.getProperty("os.name").startsWith("Windows")) return
         val directory = java.nio.file.Files.createTempDirectory("oxbreeze stalled ")
