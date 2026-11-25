@@ -2,13 +2,20 @@
     <id>dev.oxbreeze</id>
     <name>OxBreeze</name>
     <vendor>OxBreeze</vendor>
-    <description>Oxfmt and Vite+ formatting on save using persistent formatting-only servers. No linting or IDE analysis integration.</description>
+    <description>Oxfmt formatting on save and live Oxlint diagnostics and quick fixes, including Vite+ support. Persistent language services with status-bar restart controls.</description>
     <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.lsp</depends>
     <extensions defaultExtensionNs="com.intellij">
         <projectConfigurable parentId="tools" id="dev.oxbreeze.settings" displayName="OxBreeze" instance="dev.oxbreeze.SettingsPage"/>
         <notificationGroup id="OxBreeze" displayType="BALLOON"/>
+        <platform.lsp.integrationProvider implementation="dev.oxbreeze.OxlintProvider"/>
+        <statusBarWidgetFactory id="OxBreeze" implementation="dev.oxbreeze.ServiceWidgetFactory" order="before Position"/>
     </extensions>
     <applicationListeners>
         <listener class="dev.oxbreeze.SaveListener" topic="com.intellij.openapi.fileEditor.FileDocumentManagerListener"/>
+        <listener class="dev.oxbreeze.SaveListener" topic="com.intellij.openapi.actionSystem.ex.AnActionListener"/>
     </applicationListeners>
+    <projectListeners>
+        <listener class="dev.oxbreeze.LintFileListener" topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
+    </projectListeners>
 </idea-plugin>

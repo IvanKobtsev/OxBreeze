@@ -1,7 +1,6 @@
 package dev.oxbreeze
 
 import com.google.gson.*
-import com.intellij.execution.configurations.GeneralCommandLine
 import java.io.BufferedInputStream
 import java.io.EOFException
 import java.nio.charset.StandardCharsets.UTF_8
@@ -20,10 +19,7 @@ class FormatterSession(private val formatter: Formatter, private val timeoutMill
     private val stderr = StringBuilder()
 
     init {
-        val shim = formatter.executable.toString().let { it.endsWith(".cmd", true) || it.endsWith(".bat", true) }
-        val command = if (shim) GeneralCommandLine("cmd.exe").withParameters("/d", "/c", formatter.executable.toString())
-            else GeneralCommandLine(formatter.executable.toString())
-        process = command.withParameters(formatter.serverArguments()).withWorkDirectory(formatter.directory.toFile()).createProcess()
+        process = formatter.commandLine().createProcess()
         Thread({
             try {
                 val input = BufferedInputStream(process.inputStream)
@@ -51,7 +47,7 @@ class FormatterSession(private val formatter: Formatter, private val timeoutMill
         } } } }, "OxBreeze formatter stderr").apply { isDaemon = true; start() }
     }
 
-    @Synchronized fun format(file: Path, source: String): String {
+    @Synchronized fun initialize() {
         check(!closed && process.isAlive) { "Formatter exited. ${synchronized(stderr) { stderr.toString() }}" }
         val watchdog = timer.schedule({ close() }, timeoutMillis, TimeUnit.MILLISECONDS)
         try {
@@ -60,6 +56,13 @@ class FormatterSession(private val formatter: Formatter, private val timeoutMill
                 notify("initialized", JsonObject())
                 initialized = true
             }
+        } finally { watchdog.cancel(false) }
+    }
+
+    @Synchronized fun format(file: Path, source: String): String {
+        initialize()
+        val watchdog = timer.schedule({ close() }, timeoutMillis, TimeUnit.MILLISECONDS)
+        try {
             val uri = file.toUri().toString()
             notify("textDocument/didOpen", JsonObject().apply { add("textDocument", JsonObject().apply {
                 addProperty("uri", uri); addProperty("languageId", language(file)); addProperty("version", 1); addProperty("text", source)
