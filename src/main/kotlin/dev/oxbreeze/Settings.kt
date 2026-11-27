@@ -66,9 +66,8 @@ class SettingsPage(private val project: Project) : Configurable {
         settings.extensions = selected()
         settings.lintEnabled = lintEnabled.isSelected
         settings.lintExecutable = lintExecutable.text.trim()
-        if (restartFormat) project.service<Services>().restartFormatter()
-        if (restartLint) project.service<Services>().restartLint()
-        Services.changed(project)
+        if (restartFormat) project.service<SaveService>().restart()
+        if (restartLint) project.service<LintService>().restart()
     }
     override fun reset() {
         enabled.isSelected = settings.enabled

@@ -2,14 +2,13 @@
     <id>dev.oxbreeze</id>
     <name>OxBreeze</name>
     <vendor>OxBreeze</vendor>
-    <description>Oxfmt formatting on save and live Oxlint diagnostics and quick fixes, including Vite+ support. Persistent language services with status-bar restart controls.</description>
+    <description>Oxfmt formatting on save and live Oxlint diagnostics and quick fixes, including Vite+ support. Persistent language services with native LSP integration.</description>
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.lsp</depends>
     <extensions defaultExtensionNs="com.intellij">
         <projectConfigurable parentId="tools" id="dev.oxbreeze.settings" displayName="OxBreeze" instance="dev.oxbreeze.SettingsPage"/>
         <notificationGroup id="OxBreeze" displayType="BALLOON"/>
         <platform.lsp.integrationProvider implementation="dev.oxbreeze.OxlintProvider"/>
-        <statusBarWidgetFactory id="OxBreeze" implementation="dev.oxbreeze.ServiceWidgetFactory" order="before Position"/>
     </extensions>
     <applicationListeners>
         <listener class="dev.oxbreeze.SaveListener" topic="com.intellij.openapi.fileEditor.FileDocumentManagerListener"/>

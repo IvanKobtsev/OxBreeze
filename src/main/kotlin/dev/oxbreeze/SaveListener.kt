@@ -67,8 +67,6 @@ class SaveService(private val project: Project) : com.intellij.openapi.Disposabl
     private val sequence = AtomicLong()
     private val sessions = SessionPool<Formatter, FormatterSession>({ it.isRunning }, ::FormatterSession)
     private val contexts = ConcurrentHashMap.newKeySet<Path>()
-    @Volatile private var failure: String? = null
-    @Volatile private var starting = false
     private val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "OxBreeze formatting").apply { isDaemon = true } }
     private val reported = ConcurrentHashMap.newKeySet<String>()
     private val applying = HashSet<Document>() // UI thread only
@@ -92,8 +90,6 @@ class SaveService(private val project: Project) : com.intellij.openapi.Disposabl
                 contexts.add(file)
                 val formatter = Discovery.resolve(file, root, settings.executable)
                     ?: error("No local formatter found. Install oxfmt or vite-plus, or set an executable override.")
-                starting = true
-                Services.changed(project)
                 val session = sessions.acquire(formatter, generation) ?: return@FutureTask
                 if (disposed) { session.close(); return@FutureTask }
                 val output = try { session.format(file, source) } catch (e: Exception) {
@@ -102,7 +98,6 @@ class SaveService(private val project: Project) : com.intellij.openapi.Disposabl
                     throw e
                 }
                 if (sessions.generation != generation) return@FutureTask
-                failure = null
                 if (Thread.currentThread().isInterrupted || output == source) return@FutureTask
                 ApplicationManager.getApplication().invokeLater {
                     if (project.isDisposed || sessions.generation != generation || jobs[document]?.sequence != id || document.text != source || !project.service<Settings>().state.enabled) return@invokeLater
@@ -114,9 +109,6 @@ class SaveService(private val project: Project) : com.intellij.openapi.Disposabl
                 }
             } catch (e: Exception) {
                 if (sessions.generation == generation && !Thread.currentThread().isInterrupted && !project.isDisposed) report(e)
-            } finally {
-                if (sessions.generation == generation) starting = false
-                Services.changed(project)
             }
         }, Unit)
         jobs[document] = Job(id, source, future)
@@ -126,7 +118,6 @@ class SaveService(private val project: Project) : com.intellij.openapi.Disposabl
     private fun report(error: Exception) {
         log.warn("OxBreeze formatting failed", error)
         val message = error.message ?: "Formatter failed"
-        failure = message
         if (!reported.add(message)) return
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) NotificationGroupManager.getInstance().getNotificationGroup("OxBreeze")
@@ -135,14 +126,6 @@ class SaveService(private val project: Project) : com.intellij.openapi.Disposabl
                 .notify(project)
         }
     }
-    fun status(): String {
-        if (!project.service<Settings>().state.enabled) return "Disabled"
-        failure?.let { return "Error: $it" }
-        if (starting) return "Starting / formatting"
-        val count = sessions.activeCount()
-        return if (count == 0) "Idle" else "Running ($count session${if (count == 1) "" else "s"})"
-    }
-
     /** May be called from the UI; process shutdown and initialization happen off the UI thread. */
     fun restart() {
         if (disposed) return
@@ -151,9 +134,6 @@ class SaveService(private val project: Project) : com.intellij.openapi.Disposabl
         jobs.values.forEach { it.future.cancel(false) }
         jobs.clear()
         reported.clear()
-        failure = null
-        starting = true
-        Services.changed(project)
         ApplicationManager.getApplication().executeOnPooledThread {
             active.forEach { it.close() }
             if (disposed || worker.isShutdown) return@executeOnPooledThread
@@ -186,9 +166,6 @@ class SaveService(private val project: Project) : com.intellij.openapi.Disposabl
                     }
                 } catch (e: Exception) {
                     if (!disposed && sessions.generation == generation) report(e)
-                } finally {
-                    if (sessions.generation == generation) starting = false
-                    Services.changed(project)
                 }
                 }
             }.onFailure { if (!disposed) log.warn("OxBreeze restart failed", it) }

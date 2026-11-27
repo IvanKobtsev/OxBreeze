@@ -11,7 +11,7 @@ internal class SessionPool<K, V : AutoCloseable>(private val running: (V) -> Boo
             if (generation != expectedGeneration) return null
             sessions[key]?.takeIf(running)?.let { return it }
         }
-        // Process creation must not hold the lock used by UI status/restart operations.
+        // Process creation must not hold the lock used by UI restart operations.
         val created = create(key)
         var previous: V? = null
         val result = synchronized(this) {
