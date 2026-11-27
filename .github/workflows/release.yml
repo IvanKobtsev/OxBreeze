@@ -1,8 +1,9 @@
 name: Build release plugin
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: read
@@ -42,12 +43,18 @@ jobs:
           path: build/distributions/*.zip
           if-no-files-found: error
 
-      - name: Attach plugin to release
+      - name: Create release and attach plugin
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           $artifacts = @(Get-ChildItem -Path build/distributions/*.zip -File | ForEach-Object { $_.FullName })
           if ($artifacts.Count -eq 0) { throw 'No plugin ZIP found' }
-          gh release upload "$env:RELEASE_TAG" @artifacts --clobber
+          gh release view "$env:RELEASE_TAG" --json id > $null 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload "$env:RELEASE_TAG" @artifacts --clobber
+          } else {
+            gh release create "$env:RELEASE_TAG" @artifacts --verify-tag --generate-notes --title "$env:RELEASE_TAG"
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
